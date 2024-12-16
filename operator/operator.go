@@ -127,7 +127,6 @@ func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
 		RegistryCoordinatorAddr:    c.AVSRegistryCoordinatorAddress,
 		OperatorStateRetrieverAddr: c.OperatorStateRetrieverAddress,
 		AvsName:                    AVS_NAME,
-		PromMetricsIpPortAddress:   c.EigenMetricsIpPortAddress,
 	}
 	operatorEcdsaPrivateKey, err := sdkecdsa.ReadKey(
 		c.EcdsaPrivateKeyStorePath,

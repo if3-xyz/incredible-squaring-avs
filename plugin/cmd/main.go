@@ -101,7 +101,6 @@ func plugin(ctx *cli.Context) {
 		RegistryCoordinatorAddr:    avsConfig.AVSRegistryCoordinatorAddress,
 		OperatorStateRetrieverAddr: avsConfig.OperatorStateRetrieverAddress,
 		AvsName:                    "incredible-squaring",
-		PromMetricsIpPortAddress:   avsConfig.EigenMetricsIpPortAddress,
 	}
 	logger, _ := logging.NewZapLogger(logging.Development)
 	ethHttpClient, err := ethclient.Dial(avsConfig.EthRpcUrl)
