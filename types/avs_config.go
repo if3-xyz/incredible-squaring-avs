@@ -13,7 +13,6 @@ type NodeConfig struct {
 	EcdsaPrivateKeyStorePath      string `yaml:"ecdsa_private_key_store_path"`
 	AggregatorServerIpPortAddress string `yaml:"aggregator_server_ip_port_address"`
 	RegisterOperatorOnStartup     bool   `yaml:"register_operator_on_startup"`
-	EnableMetrics                 bool   `yaml:"enable_metrics"`
 	NodeApiIpPortAddress          string `yaml:"node_api_ip_port_address"`
 	EnableNodeApi                 bool   `yaml:"enable_node_api"`
 }
