@@ -49,7 +49,6 @@ type Operator struct {
 	// write to the chain during the course of their normal operations
 	// writing to the chain should be done via the cli only
 	metricsReg       *prometheus.Registry
-	metrics          metrics.Metrics
 	nodeApi          *nodeapi.NodeApi
 	avsWriter        *chainio.AvsWriter
 	avsReader        chainio.AvsReaderer
@@ -91,29 +90,16 @@ func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
 	nodeApi := nodeapi.NewNodeApi(AVS_NAME, SEM_VER, c.NodeApiIpPortAddress, logger)
 
 	var ethRpcClient, ethWsClient sdkcommon.EthClientInterface
-	if c.EnableMetrics {
-		rpcCallsCollector := rpccalls.NewCollector(AVS_NAME, reg)
-		ethRpcClient, err = eth.NewInstrumentedClient(c.EthRpcUrl, rpcCallsCollector)
-		if err != nil {
-			logger.Errorf("Cannot create http ethclient", "err", err)
-			return nil, err
-		}
-		ethWsClient, err = eth.NewInstrumentedClient(c.EthWsUrl, rpcCallsCollector)
-		if err != nil {
-			logger.Errorf("Cannot create ws ethclient", "err", err)
-			return nil, err
-		}
-	} else {
-		ethRpcClient, err = ethclient.Dial(c.EthRpcUrl)
-		if err != nil {
-			logger.Errorf("Cannot create http ethclient", "err", err)
-			return nil, err
-		}
-		ethWsClient, err = ethclient.Dial(c.EthWsUrl)
-		if err != nil {
-			logger.Errorf("Cannot create ws ethclient", "err", err)
-			return nil, err
-		}
+
+	ethRpcClient, err = ethclient.Dial(c.EthRpcUrl)
+	if err != nil {
+		logger.Errorf("Cannot create http ethclient", "err", err)
+		return nil, err
+	}
+	ethWsClient, err = ethclient.Dial(c.EthWsUrl)
+	if err != nil {
+		logger.Errorf("Cannot create ws ethclient", "err", err)
+		return nil, err
 	}
 
 	blsKeyPassword, ok := os.LookupEnv("OPERATOR_BLS_KEY_PASSWORD")
@@ -216,7 +202,6 @@ func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
 		config:                             c,
 		logger:                             logger,
 		metricsReg:                         reg,
-		metrics:                            avsAndEigenMetrics,
 		nodeApi:                            nodeApi,
 		ethClient:                          ethRpcClient,
 		avsWriter:                          avsWriter,
@@ -274,11 +259,8 @@ func (o *Operator) Start(ctx context.Context) error {
 		o.nodeApi.Start()
 	}
 	var metricsErrChan <-chan error
-	if o.config.EnableMetrics {
-		metricsErrChan = o.metrics.Start(ctx, o.metricsReg)
-	} else {
-		metricsErrChan = make(chan error, 1)
-	}
+
+	metricsErrChan = make(chan error, 1)
 
 	// TODO(samlaf): wrap this call with increase in avs-node-spec metric
 	sub := o.avsSubscriber.SubscribeToNewTasks(o.newTaskCreatedChan)
@@ -297,7 +279,6 @@ func (o *Operator) Start(ctx context.Context) error {
 			// TODO(samlaf): wrap this call with increase in avs-node-spec metric
 			sub = o.avsSubscriber.SubscribeToNewTasks(o.newTaskCreatedChan)
 		case newTaskCreatedLog := <-o.newTaskCreatedChan:
-			o.metrics.IncNumTasksReceived()
 			taskResponse := o.ProcessNewTaskCreatedLog(newTaskCreatedLog)
 			signedTaskResponse, err := o.SignTaskResponse(taskResponse)
 			if err != nil {
