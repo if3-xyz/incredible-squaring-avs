@@ -80,16 +80,16 @@ func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
 	nodeApi := nodeapi.NewNodeApi(AVS_NAME, SEM_VER, c.NodeApiIpPortAddress, logger)
 
 	var ethRpcClient, ethWsClient sdkcommon.EthClientInterface
-		ethRpcClient, err = ethclient.Dial(c.EthRpcUrl)
-		if err != nil {
-			logger.Errorf("Cannot create http ethclient", "err", err)
-			return nil, err
-		}
-		ethWsClient, err = ethclient.Dial(c.EthWsUrl)
-		if err != nil {
-			logger.Errorf("Cannot create ws ethclient", "err", err)
-			return nil, err
-		}
+	ethRpcClient, err = ethclient.Dial(c.EthRpcUrl)
+	if err != nil {
+		logger.Errorf("Cannot create http ethclient", "err", err)
+		return nil, err
+	}
+	ethWsClient, err = ethclient.Dial(c.EthWsUrl)
+	if err != nil {
+		logger.Errorf("Cannot create ws ethclient", "err", err)
+		return nil, err
+	}
 
 	blsKeyPassword, ok := os.LookupEnv("OPERATOR_BLS_KEY_PASSWORD")
 	if !ok {
@@ -127,6 +127,7 @@ func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
 		RegistryCoordinatorAddr:    c.AVSRegistryCoordinatorAddress,
 		OperatorStateRetrieverAddr: c.OperatorStateRetrieverAddress,
 		AvsName:                    AVS_NAME,
+		PromMetricsIpPortAddress:   "127.0.0.1:9090",
 	}
 	operatorEcdsaPrivateKey, err := sdkecdsa.ReadKey(
 		c.EcdsaPrivateKeyStorePath,
