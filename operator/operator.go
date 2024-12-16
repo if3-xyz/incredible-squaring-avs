@@ -9,28 +9,22 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/Layr-Labs/incredible-squaring-avs/aggregator"
 	sdkcommon "github.com/Layr-Labs/incredible-squaring-avs/common"
 	cstaskmanager "github.com/Layr-Labs/incredible-squaring-avs/contracts/bindings/IncredibleSquaringTaskManager"
 	"github.com/Layr-Labs/incredible-squaring-avs/core"
 	"github.com/Layr-Labs/incredible-squaring-avs/core/chainio"
-	"github.com/Layr-Labs/incredible-squaring-avs/metrics"
 	"github.com/Layr-Labs/incredible-squaring-avs/types"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients"
 	sdkelcontracts "github.com/Layr-Labs/eigensdk-go/chainio/clients/elcontracts"
-	"github.com/Layr-Labs/eigensdk-go/chainio/clients/eth"
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients/wallet"
 	"github.com/Layr-Labs/eigensdk-go/chainio/txmgr"
 	"github.com/Layr-Labs/eigensdk-go/crypto/bls"
 	sdkecdsa "github.com/Layr-Labs/eigensdk-go/crypto/ecdsa"
 	"github.com/Layr-Labs/eigensdk-go/logging"
 	sdklogging "github.com/Layr-Labs/eigensdk-go/logging"
-	sdkmetrics "github.com/Layr-Labs/eigensdk-go/metrics"
-	"github.com/Layr-Labs/eigensdk-go/metrics/collectors/economic"
-	rpccalls "github.com/Layr-Labs/eigensdk-go/metrics/collectors/rpc_calls"
 	"github.com/Layr-Labs/eigensdk-go/nodeapi"
 	"github.com/Layr-Labs/eigensdk-go/signerv2"
 	sdktypes "github.com/Layr-Labs/eigensdk-go/types"
@@ -48,8 +42,6 @@ type Operator struct {
 	// this way, auditing this operator code makes it obvious that operators don't need to
 	// write to the chain during the course of their normal operations
 	// writing to the chain should be done via the cli only
-	metricsReg       *prometheus.Registry
-	metrics          metrics.Metrics
 	nodeApi          *nodeapi.NodeApi
 	avsWriter        *chainio.AvsWriter
 	avsReader        chainio.AvsReaderer
@@ -83,27 +75,11 @@ func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
 	if err != nil {
 		return nil, err
 	}
-	reg := prometheus.NewRegistry()
-	eigenMetrics := sdkmetrics.NewEigenMetrics(AVS_NAME, c.EigenMetricsIpPortAddress, reg, logger)
-	avsAndEigenMetrics := metrics.NewAvsAndEigenMetrics(AVS_NAME, eigenMetrics, reg)
 
 	// Setup Node Api
 	nodeApi := nodeapi.NewNodeApi(AVS_NAME, SEM_VER, c.NodeApiIpPortAddress, logger)
 
 	var ethRpcClient, ethWsClient sdkcommon.EthClientInterface
-	if c.EnableMetrics {
-		rpcCallsCollector := rpccalls.NewCollector(AVS_NAME, reg)
-		ethRpcClient, err = eth.NewInstrumentedClient(c.EthRpcUrl, rpcCallsCollector)
-		if err != nil {
-			logger.Errorf("Cannot create http ethclient", "err", err)
-			return nil, err
-		}
-		ethWsClient, err = eth.NewInstrumentedClient(c.EthWsUrl, rpcCallsCollector)
-		if err != nil {
-			logger.Errorf("Cannot create ws ethclient", "err", err)
-			return nil, err
-		}
-	} else {
 		ethRpcClient, err = ethclient.Dial(c.EthRpcUrl)
 		if err != nil {
 			logger.Errorf("Cannot create http ethclient", "err", err)
@@ -114,7 +90,6 @@ func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
 			logger.Errorf("Cannot create ws ethclient", "err", err)
 			return nil, err
 		}
-	}
 
 	blsKeyPassword, ok := os.LookupEnv("OPERATOR_BLS_KEY_PASSWORD")
 	if !ok {
@@ -196,17 +171,7 @@ func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
 		return nil, err
 	}
 
-	// We must register the economic metrics separately because they are exported metrics (from jsonrpc or subgraph calls)
-	// and not instrumented metrics: see https://prometheus.io/docs/instrumenting/writing_clientlibs/#overall-structure
-	quorumNames := map[sdktypes.QuorumNum]string{
-		0: "quorum0",
-	}
-	economicMetricsCollector := economic.NewCollector(
-		sdkClients.ElChainReader, sdkClients.AvsRegistryChainReader,
-		AVS_NAME, logger, common.HexToAddress(c.OperatorAddress), quorumNames)
-	reg.MustRegister(economicMetricsCollector)
-
-	aggregatorRpcClient, err := NewAggregatorRpcClient(c.AggregatorServerIpPortAddress, logger, avsAndEigenMetrics)
+	aggregatorRpcClient, err := NewAggregatorRpcClient(c.AggregatorServerIpPortAddress, logger)
 	if err != nil {
 		logger.Error("Cannot create AggregatorRpcClient. Is aggregator running?", "err", err)
 		return nil, err
@@ -215,8 +180,6 @@ func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
 	operator := &Operator{
 		config:                             c,
 		logger:                             logger,
-		metricsReg:                         reg,
-		metrics:                            avsAndEigenMetrics,
 		nodeApi:                            nodeApi,
 		ethClient:                          ethRpcClient,
 		avsWriter:                          avsWriter,
@@ -273,31 +236,17 @@ func (o *Operator) Start(ctx context.Context) error {
 	if o.config.EnableNodeApi {
 		o.nodeApi.Start()
 	}
-	var metricsErrChan <-chan error
-	if o.config.EnableMetrics {
-		metricsErrChan = o.metrics.Start(ctx, o.metricsReg)
-	} else {
-		metricsErrChan = make(chan error, 1)
-	}
-
-	// TODO(samlaf): wrap this call with increase in avs-node-spec metric
 	sub := o.avsSubscriber.SubscribeToNewTasks(o.newTaskCreatedChan)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case err := <-metricsErrChan:
-			// TODO(samlaf); we should also register the service as unhealthy in the node api
-			// https://eigen.nethermind.io/docs/spec/api/
-			o.logger.Fatal("Error in metrics server", "err", err)
 		case err := <-sub.Err():
 			o.logger.Error("Error in websocket subscription", "err", err)
 			// TODO(samlaf): write unit tests to check if this fixed the issues we were seeing
 			sub.Unsubscribe()
-			// TODO(samlaf): wrap this call with increase in avs-node-spec metric
 			sub = o.avsSubscriber.SubscribeToNewTasks(o.newTaskCreatedChan)
 		case newTaskCreatedLog := <-o.newTaskCreatedChan:
-			o.metrics.IncNumTasksReceived()
 			taskResponse := o.ProcessNewTaskCreatedLog(newTaskCreatedLog)
 			signedTaskResponse, err := o.SignTaskResponse(taskResponse)
 			if err != nil {

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Layr-Labs/incredible-squaring-avs/aggregator"
-	"github.com/Layr-Labs/incredible-squaring-avs/metrics"
 
 	"github.com/Layr-Labs/eigensdk-go/logging"
 )
@@ -16,16 +15,14 @@ type AggregatorRpcClienter interface {
 }
 type AggregatorRpcClient struct {
 	rpcClient            *rpc.Client
-	metrics              metrics.Metrics
 	logger               logging.Logger
 	aggregatorIpPortAddr string
 }
 
-func NewAggregatorRpcClient(aggregatorIpPortAddr string, logger logging.Logger, metrics metrics.Metrics) (*AggregatorRpcClient, error) {
+func NewAggregatorRpcClient(aggregatorIpPortAddr string, logger logging.Logger) (*AggregatorRpcClient, error) {
 	return &AggregatorRpcClient{
 		// set to nil so that we can create an rpc client even if the aggregator is not running
 		rpcClient:            nil,
-		metrics:              metrics,
 		logger:               logger,
 		aggregatorIpPortAddr: aggregatorIpPortAddr,
 	}, nil
@@ -67,7 +64,6 @@ func (c *AggregatorRpcClient) SendSignedTaskResponseToAggregator(signedTaskRespo
 			c.logger.Info("Received error from aggregator", "err", err)
 		} else {
 			c.logger.Info("Signed task response header accepted by aggregator.", "reply", reply)
-			c.metrics.IncNumTasksAcceptedByAggregator()
 			return
 		}
 		c.logger.Infof("Retrying in 2 seconds")

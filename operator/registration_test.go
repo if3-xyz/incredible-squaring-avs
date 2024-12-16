@@ -3,14 +3,12 @@ package operator
 import (
 	"testing"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Layr-Labs/eigensdk-go/crypto/bls"
 	"github.com/Layr-Labs/eigensdk-go/testutils"
 
 	cstaskmanager "github.com/Layr-Labs/incredible-squaring-avs/contracts/bindings/IncredibleSquaringTaskManager"
-	"github.com/Layr-Labs/incredible-squaring-avs/metrics"
 	"github.com/Layr-Labs/incredible-squaring-avs/tests"
 )
 
@@ -33,8 +31,6 @@ func IntegrationTestOperatorRegistration(t *testing.T) {
 
 func createMockOperator() (*Operator, error) {
 	logger := testutils.GetTestLogger()
-	reg := prometheus.NewRegistry()
-	noopMetrics := metrics.NewNoopMetrics()
 
 	blsPrivateKey, err := bls.NewPrivateKey(MOCK_OPERATOR_BLS_PRIVATE_KEY)
 	if err != nil {
@@ -45,8 +41,6 @@ func createMockOperator() (*Operator, error) {
 	operator := &Operator{
 		logger:             logger,
 		blsKeypair:         operatorKeypair,
-		metricsReg:         reg,
-		metrics:            noopMetrics,
 		newTaskCreatedChan: make(chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated),
 		operatorId:         MOCK_OPERATOR_ID,
 	}
